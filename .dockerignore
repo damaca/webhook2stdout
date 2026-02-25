@@ -1,0 +1,6 @@
+.git
+.github
+bin
+.gocache
+.DS_Store
+*.log

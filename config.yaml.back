@@ -1,0 +1,15 @@
+port: 8080
+route: /
+pretty: true
+ack_status: 200
+ack_body:
+  ok: true
+mappings:
+  - from: body
+    to: payload
+  - from: headers
+    to: headers_received
+  - from: method
+    to: method
+  - from: path
+    to: route
