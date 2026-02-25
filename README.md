@@ -1,6 +1,6 @@
 # webhook2stdout
 
-A configurable Fiber webhook service that prints received request data to stdout.
+A configurable webhook service that prints received request data to stdout.
 
 ## Features
 
