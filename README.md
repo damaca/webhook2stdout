@@ -127,6 +127,18 @@ mappings:
     to: headers_received
 ```
 
+```yaml
+mappings:
+  - from: body
+    to: payload
+  - from: headers
+    to: headers_received
+  - from: method
+    to: method
+  - from: path
+    to: route
+```
+
 This maps the request body to `payload` and headers to `headers_received` in stdout output.
 
 ## GitHub Actions
