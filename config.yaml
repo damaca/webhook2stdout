@@ -1,6 +1,7 @@
 port: 8080
 route: /
 pretty: true
+log_json: true
 ack_status: 200
 ack_body:
   ok: true

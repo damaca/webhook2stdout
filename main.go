@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/gofiber/fiber/v3"
@@ -32,6 +32,7 @@ type Config struct {
 	Port      int            `json:"port" yaml:"port"`
 	Route     string         `json:"route" yaml:"route"`
 	Pretty    bool           `json:"pretty" yaml:"pretty"`
+	LogJSON   bool           `json:"log_json" yaml:"log_json"`
 	AckStatus int            `json:"ack_status" yaml:"ack_status"`
 	AckBody   map[string]any `json:"ack_body" yaml:"ack_body"`
 	Mappings  []FieldMapping `json:"mappings" yaml:"mappings"`
@@ -42,6 +43,7 @@ func defaultConfig() Config {
 		Port:      8080,
 		Route:     "/",
 		Pretty:    false,
+		LogJSON:   true,
 		AckStatus: 200,
 		AckBody: map[string]any{
 			"ok": true,
@@ -64,11 +66,15 @@ func main() {
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		os.Exit(1)
 	}
 	if err := validateConfig(cfg); err != nil {
-		log.Fatalf("invalid config: %v", err)
+		fmt.Fprintf(os.Stderr, "invalid config: %v\n", err)
+		os.Exit(1)
 	}
+
+	logger := newLogger(cfg.LogJSON)
 
 	app := fiber.New(fiber.Config{
 		ServerHeader: "wh-logger",
@@ -78,12 +84,12 @@ func main() {
 	app.All(cfg.Route, func(c fiber.Ctx) error {
 		output, err := buildOutput(c, cfg.Mappings)
 		if err != nil {
-			log.Printf("failed to build output: %v", err)
+			logger.Error("failed to build output", "error", err)
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 		}
 
 		if err := printOutput(output, cfg.Pretty); err != nil {
-			log.Printf("failed to write output: %v", err)
+			logger.Error("failed to write output", "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to write output"})
 		}
 
@@ -91,12 +97,21 @@ func main() {
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("listening on %s%s", addr, cfg.Route)
+	logger.Debug("listening", "address", addr, "route", cfg.Route)
 	if err := app.Listen(addr, fiber.ListenConfig{
 		DisableStartupMessage: true,
 	}); err != nil {
-		log.Fatalf("server exited: %v", err)
+		logger.Error("server exited", "error", err)
+		os.Exit(1)
 	}
+}
+
+func newLogger(jsonOutput bool) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
+	if jsonOutput {
+		return slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	}
+	return slog.New(slog.NewTextHandler(os.Stdout, opts))
 }
 
 func buildOutput(c fiber.Ctx, mappings []FieldMapping) (map[string]any, error) {

@@ -68,6 +68,7 @@ The container defaults to loading `/app/config.yaml`.
 - `port` (int): server port
 - `route` (string): endpoint path (must start with `/`)
 - `pretty` (bool): pretty-print JSON to stdout
+- `log_json` (bool): emit service logs in JSON (`true`) or text (`false`)
 - `ack_status` (int): HTTP status returned to caller
 - `ack_body` (object): JSON body returned to caller
 - `mappings` (list): mappings from request source to output key
