@@ -8,5 +8,3 @@ ack_body:
 mappings:
   - from: body
     root: true
-  - from: headers
-    to: headers_received
