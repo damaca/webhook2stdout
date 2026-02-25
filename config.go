@@ -65,7 +65,7 @@ func validateConfig(cfg Config) error {
 		if !m.Root && m.To == "" {
 			return fmt.Errorf("mappings[%d] must set to or root: true", i)
 		}
-		if m.Root {
+		if m.To == "" {
 			continue
 		}
 		if _, ok := seen[m.To]; ok {
@@ -76,6 +76,9 @@ func validateConfig(cfg Config) error {
 
 	if cfg.AckStatus < 100 || cfg.AckStatus > 599 {
 		return fmt.Errorf("ack_status must be a valid HTTP status code")
+	}
+	if _, err := parseLogLevel(cfg.LogLevel); err != nil {
+		return err
 	}
 
 	return nil

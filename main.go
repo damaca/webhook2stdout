@@ -33,6 +33,7 @@ type Config struct {
 	Route     string         `json:"route" yaml:"route"`
 	Pretty    bool           `json:"pretty" yaml:"pretty"`
 	LogJSON   bool           `json:"log_json" yaml:"log_json"`
+	LogLevel  string         `json:"log_level" yaml:"log_level"`
 	AckStatus int            `json:"ack_status" yaml:"ack_status"`
 	AckBody   map[string]any `json:"ack_body" yaml:"ack_body"`
 	Mappings  []FieldMapping `json:"mappings" yaml:"mappings"`
@@ -44,6 +45,7 @@ func defaultConfig() Config {
 		Route:     "/",
 		Pretty:    false,
 		LogJSON:   true,
+		LogLevel:  "info",
 		AckStatus: 200,
 		AckBody: map[string]any{
 			"ok": true,
@@ -74,7 +76,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger := newLogger(cfg.LogJSON)
+	logger, err := newLogger(cfg.LogJSON, cfg.LogLevel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid log configuration: %v\n", err)
+		os.Exit(1)
+	}
 
 	app := fiber.New(fiber.Config{
 		ServerHeader: "wh-logger",
@@ -106,16 +112,39 @@ func main() {
 	}
 }
 
-func newLogger(jsonOutput bool) *slog.Logger {
-	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
-	if jsonOutput {
-		return slog.New(slog.NewJSONHandler(os.Stdout, opts))
+func newLogger(jsonOutput bool, level string) (*slog.Logger, error) {
+	logLevel, err := parseLogLevel(level)
+	if err != nil {
+		return nil, err
 	}
-	return slog.New(slog.NewTextHandler(os.Stdout, opts))
+	opts := &slog.HandlerOptions{Level: logLevel}
+	if jsonOutput {
+		return slog.New(slog.NewJSONHandler(os.Stdout, opts)), nil
+	}
+	return slog.New(slog.NewTextHandler(os.Stdout, opts)), nil
 }
 
-func buildOutput(c fiber.Ctx, mappings []FieldMapping) (map[string]any, error) {
+func parseLogLevel(level string) (slog.Level, error) {
+	switch level {
+	case "", "info":
+		return slog.LevelInfo, nil
+	case "debug":
+		return slog.LevelDebug, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, fmt.Errorf("unsupported log_level %q (use debug, info, warn, or error)", level)
+	}
+}
+
+func buildOutput(c fiber.Ctx, mappings []FieldMapping) (any, error) {
 	output := make(map[string]any, len(mappings))
+	var (
+		rootValue    any
+		hasRootValue bool
+	)
 
 	for _, m := range mappings {
 		value, err := extractValue(c, m.From)
@@ -123,24 +152,41 @@ func buildOutput(c fiber.Ctx, mappings []FieldMapping) (map[string]any, error) {
 			return nil, fmt.Errorf("mapping %q -> %q: %w", m.From, m.To, err)
 		}
 		if m.Root {
-			if err := mergeRoot(output, value); err != nil {
-				return nil, fmt.Errorf("mapping %q as root: %w", m.From, err)
+			obj, ok := value.(map[string]any)
+			if ok {
+				if hasRootValue {
+					return nil, fmt.Errorf("mapping %q cannot merge object root when non-object root already set", m.From)
+				}
+				if err := mergeRootObject(output, obj); err != nil {
+					return nil, fmt.Errorf("mapping %q as root: %w", m.From, err)
+				}
+				continue
 			}
+
+			if len(output) > 0 {
+				return nil, fmt.Errorf("mapping %q cannot set non-object root when object output already exists", m.From)
+			}
+			if hasRootValue {
+				return nil, fmt.Errorf("mapping %q cannot set non-object root more than once", m.From)
+			}
+			rootValue = value
+			hasRootValue = true
 			continue
+		}
+		if hasRootValue {
+			return nil, fmt.Errorf("mapping %q cannot add keyed fields when non-object root is already set", m.From)
 		}
 
 		output[m.To] = value
 	}
 
+	if hasRootValue {
+		return rootValue, nil
+	}
 	return output, nil
 }
 
-func mergeRoot(dst map[string]any, value any) error {
-	obj, ok := value.(map[string]any)
-	if !ok {
-		return fmt.Errorf("root mapping requires an object source")
-	}
-
+func mergeRootObject(dst map[string]any, obj map[string]any) error {
 	for k, v := range obj {
 		if _, exists := dst[k]; exists {
 			return fmt.Errorf("root key collision on %q", k)

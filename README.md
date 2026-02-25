@@ -69,6 +69,7 @@ The container defaults to loading `/app/config.yaml`.
 - `route` (string): endpoint path (must start with `/`)
 - `pretty` (bool): pretty-print JSON to stdout
 - `log_json` (bool): emit service logs in JSON (`true`) or text (`false`)
+- `log_level` (string): `debug`, `info`, `warn`, or `error`
 - `ack_status` (int): HTTP status returned to caller
 - `ack_body` (object): JSON body returned to caller
 - `mappings` (list): mappings from request source to output key
@@ -89,8 +90,6 @@ The container defaults to loading `/app/config.yaml`.
 mappings:
   - from: body
     root: true
-  - from: headers
-    to: headers_received
 ```
 
 `root: true` merges an object source directly into the top-level output JSON.
@@ -100,9 +99,23 @@ Example: if body is `{"event":"build.finished","id":"123"}`, output root gets `e
 Rules:
 
 - A mapping must set either `to` or `root: true`
-- A mapping cannot set both
-- `root: true` only works when source resolves to an object
+- If `root: true` and source is an object, keys are merged at root
+- If `root: true` and source is an array/scalar, output root becomes that value
 - Root merge fails on key collisions
+- If non-object root is set (array/scalar), no additional keyed mappings can be added
+
+Body-at-root example (works for object and array):
+
+```yaml
+mappings:
+  - from: body
+    root: true
+```
+
+Behavior:
+
+- Body object: merged into root object
+- Body array/scalar: printed as root value
 
 Example with named fields only:
 
